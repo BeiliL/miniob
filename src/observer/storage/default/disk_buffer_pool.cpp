@@ -202,7 +202,6 @@ RC DiskBufferPool::close_file()
   bp_manager_.close_file(file_name_.c_str());
   return RC::SUCCESS;
 }
-
 RC DiskBufferPool::get_this_page(PageNum page_num, Frame **frame)
 {
   RC rc = RC::SUCCESS;
@@ -611,6 +610,13 @@ RC BufferPoolManager::close_file(const char *_file_name)
   return RC::SUCCESS;
 }
 
+RC BufferPoolManager::drop_file(const char * _file_name)
+{
+    RC rc = RC::SUCCESS;
+    rc = close_file(_file_name);
+    remove(_file_name);
+    return rc;
+}
 RC BufferPoolManager::flush_page(Frame &frame)
 {
   int fd = frame.file_desc();

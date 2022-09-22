@@ -9,19 +9,19 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 //
-// Created by WangYunlai on 2022/6/27.
+// Created by BeiliL on 2022/9/15.
 //
 
 #include "common/log/log.h"
-#include "sql/operator/delete_operator.h"
+#include "sql/operator/update_operator.h"
 #include "storage/common/record.h"
 #include "storage/common/table.h"
-#include "sql/stmt/delete_stmt.h"
+#include "sql/stmt/update_stmt.h"
 
-RC DeleteOperator::open()
+RC UpdateOperator::open()
 {
   if (children_.size() != 1) {
-    LOG_WARN("delete operator must has 1 child");
+    LOG_WARN("Update operator must has 1 child");
     return RC::INTERNAL;
   }
 
@@ -32,31 +32,36 @@ RC DeleteOperator::open()
     return rc;
   }
   
-  Table *table = delete_stmt_->table();
+  Table *table = Update_stmt_->table();
+  const char *attribute_name =Update_stmt_->attribute_name();
+  const Value value = Update_stmt_->value();
+  int value_amount = Update_stmt_->value_amount();
+
+  //类型判断 TODO
+  rc = RC::SUCCESS;
   while (RC::SUCCESS == (rc = child->next())) {
     Tuple *tuple = child->current_tuple();
     if (nullptr == tuple) {
       LOG_WARN("failed to get current record: %s", strrc(rc));
       return rc;
     }
-
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record &record = row_tuple->record();
-    rc = table->delete_record(nullptr, &record);
+    rc = table->update_record(nullptr, attribute_name ,value_amount, value, &record);
     if (rc != RC::SUCCESS) {
-      LOG_WARN("failed to delete record: %s", strrc(rc));
+      LOG_WARN("failed to Update record: %s", strrc(rc));
       return rc;
     }
   }
   return RC::SUCCESS;
 }
 
-RC DeleteOperator::next()
+RC UpdateOperator::next()
 {
   return RC::RECORD_EOF;
 }
 
-RC DeleteOperator::close()
+RC UpdateOperator::close()
 {
   children_[0]->close();
   return RC::SUCCESS;

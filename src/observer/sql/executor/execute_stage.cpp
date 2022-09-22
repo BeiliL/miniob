@@ -32,6 +32,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/predicate_operator.h"
 #include "sql/operator/delete_operator.h"
 #include "sql/operator/project_operator.h"
+#include "sql/operator/update_operator.h"
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/update_stmt.h"
@@ -142,7 +143,7 @@ void ExecuteStage::handle_request(common::StageEvent *event)
       do_insert(sql_event);
     } break;
     case StmtType::UPDATE: {
-      //do_update((UpdateStmt *)stmt, session_event);
+      do_update(sql_event);
     } break;
     case StmtType::DELETE: {
       do_delete(sql_event);
@@ -165,8 +166,9 @@ void ExecuteStage::handle_request(common::StageEvent *event)
     case SCF_DESC_TABLE: {
       do_desc_table(sql_event);
     } break;
-
-    case SCF_DROP_TABLE:
+    case SCF_DROP_TABLE:{
+      do_drop_table(sql_event);
+    } break;
     case SCF_DROP_INDEX:
     case SCF_LOAD_DATA: {
       default_storage_stage_->handle_event(event);
@@ -462,6 +464,20 @@ RC ExecuteStage::do_create_table(SQLStageEvent *sql_event)
   }
   return rc;
 }
+
+RC ExecuteStage::do_drop_table(SQLStageEvent *sql_event)
+{
+  const DropTable &drop_table = sql_event->query()->sstr.drop_table;
+  SessionEvent *session_event = sql_event->session_event();
+  Db *db = session_event->session()->get_current_db();
+  RC rc = db->drop_table(drop_table.relation_name);
+  if (rc == RC::SUCCESS) {
+    session_event->set_response("SUCCESS\n");
+  } else {
+    session_event->set_response("FAILURE\n");
+  }
+  return rc;
+}
 RC ExecuteStage::do_create_index(SQLStageEvent *sql_event)
 {
   SessionEvent *session_event = sql_event->session_event();
@@ -545,6 +561,7 @@ RC ExecuteStage::do_delete(SQLStageEvent *sql_event)
   }
 
   DeleteStmt *delete_stmt = (DeleteStmt *)stmt;
+  
   TableScanOperator scan_oper(delete_stmt->table());
   PredicateOperator pred_oper(delete_stmt->filter_stmt());
   pred_oper.add_child(&scan_oper);
@@ -558,4 +575,33 @@ RC ExecuteStage::do_delete(SQLStageEvent *sql_event)
     session_event->set_response("SUCCESS\n");
   }
   return rc;
+}
+
+RC ExecuteStage::do_update(SQLStageEvent *sql_event)
+{
+  Stmt * stmt = sql_event->stmt();
+  SessionEvent * session_event = sql_event->session_event();
+  
+  if (nullptr == stmt)
+  {
+    LOG_WARN("cannot find statement");
+    return RC::GENERIC_ERROR;
+  }
+  LOG_INFO("BEGIN TO DO_UPDATA");
+  UpdateStmt *updatestmt = (UpdateStmt *) stmt;
+  TableScanOperator tableop (updatestmt->table());
+  PredicateOperator preop (updatestmt->filter_stmt());
+  preop.add_child(&tableop);
+  UpdateOperator updateop (updatestmt);
+  updateop.add_child(&preop);
+
+  RC rc = updateop.open();
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("failed to update record rc:%d:%s",rc ,strrc(rc));
+    session_event->set_response("FAILURE\n");
+  } else {
+    session_event->set_response("SUCCESS\n");
+  }
+  return rc;
+  
 }

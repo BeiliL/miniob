@@ -67,25 +67,32 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
   std::vector<Field> query_fields;
   for (int i = select_sql.attr_num - 1; i >= 0; i--) {
     const RelAttr &relation_attr = select_sql.attributes[i];
-
+    //特殊判断 *
     if (common::is_blank(relation_attr.relation_name) && 0 == strcmp(relation_attr.attribute_name, "*")) {
       for (Table *table : tables) {
         wildcard_fields(table, query_fields);
       }
-
-    } else if (!common::is_blank(relation_attr.relation_name)) { // TODO
+    } 
+    //表名不为空
+    else if (!common::is_blank(relation_attr.relation_name)) 
+    { // TODO
       const char *table_name = relation_attr.relation_name;
       const char *field_name = relation_attr.attribute_name;
-
-      if (0 == strcmp(table_name, "*")) {
-        if (0 != strcmp(field_name, "*")) {
+      //表名为 *
+      if (0 == strcmp(table_name, "*"))   
+      {
+        if (0 != strcmp(field_name, "*")) 
+        {
           LOG_WARN("invalid field name while table is *. attr=%s", field_name);
           return RC::SCHEMA_FIELD_MISSING;
         }
-        for (Table *table : tables) {
+        for (Table *table : tables) 
+        {
           wildcard_fields(table, query_fields);
         }
-      } else {
+      } 
+      else 
+      {
         auto iter = table_map.find(table_name);
         if (iter == table_map.end()) {
           LOG_WARN("no such table in from list: %s", table_name);
@@ -95,9 +102,12 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
         Table *table = iter->second;
         if (0 == strcmp(field_name, "*")) {
           wildcard_fields(table, query_fields);
-        } else {
+        } 
+        else 
+        {
           const FieldMeta *field_meta = table->table_meta().field(field_name);
-          if (nullptr == field_meta) {
+          if (nullptr == field_meta) 
+          {
             LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
             return RC::SCHEMA_FIELD_MISSING;
           }
@@ -105,15 +115,19 @@ RC SelectStmt::create(Db *db, const Selects &select_sql, Stmt *&stmt)
         query_fields.push_back(Field(table, field_meta));
         }
       }
-    } else {
-      if (tables.size() != 1) {
+    } 
+    else 
+    {
+      if (tables.size() != 1) 
+      {
         LOG_WARN("invalid. I do not know the attr's table. attr=%s", relation_attr.attribute_name);
         return RC::SCHEMA_FIELD_MISSING;
       }
 
       Table *table = tables[0];
       const FieldMeta *field_meta = table->table_meta().field(relation_attr.attribute_name);
-      if (nullptr == field_meta) {
+      if (nullptr == field_meta) 
+      {
         LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), relation_attr.attribute_name);
         return RC::SCHEMA_FIELD_MISSING;
       }

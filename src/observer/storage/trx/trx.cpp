@@ -91,6 +91,11 @@ RC Trx::delete_record(Table *table, Record *record)
   return rc;
 }
 
+RC Trx::update_record(Table *table, Record *record)
+{
+  return RC::GENERIC_ERROR;
+}
+
 void Trx::set_record_trx_id(Table *table, Record &record, int32_t trx_id, bool deleted) const
 {
   const FieldMeta *trx_field = table->table_meta().trx_field();

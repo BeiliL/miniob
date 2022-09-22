@@ -152,7 +152,6 @@ class DiskBufferPool
 public:
   DiskBufferPool(BufferPoolManager &bp_manager, BPFrameManager &frame_manager);
   ~DiskBufferPool();
-
   /**
    * 创建一个名称为指定文件名的分页文件
    */
@@ -258,7 +257,7 @@ public:
   RC create_file(const char *file_name);
   RC open_file(const char *file_name, DiskBufferPool *&bp);
   RC close_file(const char *file_name);
-
+  RC drop_file(const char *file_name);
   RC flush_page(Frame &frame);
 
 public:

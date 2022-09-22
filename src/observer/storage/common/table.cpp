@@ -117,7 +117,40 @@ RC Table::create(
   LOG_INFO("Successfully create table %s:%s", base_dir, name);
   return rc;
 }
-
+RC Table::drop()
+{
+  RC rc = RC::SUCCESS;
+  //drop index
+  const char * name = table_meta_.name();
+  BufferPoolManager &bpm = BufferPoolManager::instance();
+  for (Index *index : indexes_)
+  {
+    const char * index_name = index->index_meta().name();
+    std::string index_file_path = table_index_file(base_dir_.c_str(), name, index_name);
+    rc = index->drop(index_file_path.c_str());
+    if (RC::SUCCESS != rc)
+    {
+      LOG_WARN("Failed to remove table_index_file %s:%s:%s", base_dir_.c_str(), name, index->index_meta().name());
+    }
+    LOG_INFO("Successfully remove table_index_file %s:%s:%s", base_dir_.c_str(), name, index->index_meta().name());
+  }
+  //destroy record_handler
+  delete record_handler_;
+  record_handler_ = nullptr;
+  //remove data file  
+  std::string data_file = table_data_file(base_dir_.c_str(), name);
+  rc = bpm.drop_file(data_file.c_str());
+  if (RC::SUCCESS != rc)
+  {
+    LOG_WARN("Failed to remove table_data_file %s:%s", base_dir_.c_str(), name);
+  }
+  LOG_INFO("Successfully remove table_data_file %s:%s", base_dir_.c_str(), name);
+  //remove meta file
+  std::string table_meta_file_path = table_meta_file(base_dir_.c_str() , name);
+  remove(table_meta_file_path.c_str());
+  LOG_INFO("Successfully remove table_meta_file %s:%s", base_dir_.c_str(), name);
+  return rc;
+}
 RC Table::open(const char *meta_file, const char *base_dir)
 {
   // 加载元数据文件
@@ -611,6 +644,51 @@ RC Table::update_record(Trx *trx, const char *attribute_name, const Value *value
   return RC::GENERIC_ERROR;
 }
 
+RC Table::update_record(Trx *trx, const char *attribute_name,int value_num, const Value value, Record *record)
+{
+  RC rc = RC::SUCCESS;
+  if (value_num <= 0 ||value.data ==nullptr)
+  {
+    LOG_ERROR("invaild argument");
+    return RC::INVALID_ARGUMENT;
+  }
+  if (trx != nullptr) {
+    rc = trx->update_record(this, record);//逻辑待处理
+  } else {
+      RC rc = delete_entry_of_indexes(record->data(), record->rid() , false);
+      if (rc != RC::SUCCESS) {
+        LOG_ERROR("Failed to delete the old index of record (rid=%d.%d). rc=%d:%s",
+        record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+      } else{
+        int record_size = table_meta_.record_size();
+        char *data = record->data();
+        const FieldMeta *field = table_meta_.field(attribute_name);
+        size_t copy_len = field->len();
+        if (field->type() == CHARS) {
+          const size_t data_len = strlen((const char *)value.data);
+          if (copy_len > data_len) {
+            copy_len = data_len + 1;
+          }
+        }
+        memcpy(data + field->offset(), value.data, copy_len);  
+        record->set_data(data);
+        LOG_INFO("make new record finish");
+
+        RC rc = insert_entry_of_indexes(record->data(), record->rid());
+        if (rc != RC::SUCCESS) {
+          LOG_ERROR("Failed to delete the old index of record (rid=%d.%d). rc=%d:%s",
+          record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+        } else{
+          rc = record_handler_->update_record(record);
+          if (RC::SUCCESS !=rc)
+          {
+            LOG_ERROR("failed to update record rc=%d:%s" , rc , strrc(rc));
+          }
+        }
+      }
+    }
+  return rc;
+}
 class RecordDeleter {
 public:
   RecordDeleter(Table &table, Trx *trx) : table_(table), trx_(trx)
@@ -730,6 +808,11 @@ RC Table::delete_entry_of_indexes(const char *record, const RID &rid, bool error
   return rc;
 }
 
+RC Table::update_entry_of_indexes(const char *record, const RID &rid, bool error_on_not_exists)
+{
+  
+  
+}
 Index *Table::find_index(const char *index_name) const
 {
   for (Index *index : indexes_) {

@@ -883,6 +883,18 @@ RC BplusTreeHandler::close()
   return RC::SUCCESS;
 }
 
+RC BplusTreeHandler::drop(const char * file_name)
+{
+  if (disk_buffer_pool_ != nullptr) {
+    disk_buffer_pool_->close_file(); 
+    delete mem_pool_item_;
+    mem_pool_item_ = nullptr;
+  }
+  disk_buffer_pool_ = nullptr;
+  BufferPoolManager &bpm = BufferPoolManager::instance();
+  bpm.drop_file(file_name);
+  return RC::SUCCESS;
+}
 RC BplusTreeHandler::print_leaf(Frame *frame)
 {
   LeafIndexNodeHandler leaf_node(file_header_, frame);
@@ -1699,13 +1711,13 @@ RC BplusTreeHandler::delete_entry(const char *user_key, const RID *rid)
   Frame *leaf_frame;
   RC rc = find_leaf(key, leaf_frame);
   if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to find leaf page. rc =%d:%s", rc, strrc(rc));
+    LOG_WARN("failed to find leaf page. rc =%d:%s",rc, strrc(rc));
     mem_pool_item_->free(key);
     return rc;
   }
   rc = delete_entry_internal(leaf_frame, key);
   if (rc != RC::SUCCESS) {
-    LOG_WARN("Failed to delete index");
+    LOG_WARN("Failed to delete index rc:%d:%s",rc,strrc(rc));
     mem_pool_item_->free(key);
     return rc;
   }

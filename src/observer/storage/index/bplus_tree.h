@@ -402,7 +402,8 @@ public:
    * 关闭句柄indexHandle对应的索引文件
    */
   RC close();
-
+  
+  RC drop(const char *file_name);
   /**
    * 此函数向IndexHandle对应的索引中插入一个索引项。
    * 参数user_key指向要插入的属性值，参数rid标识该索引项对应的元组，

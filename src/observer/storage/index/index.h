@@ -43,6 +43,7 @@ public:
     return index_meta_;
   }
 
+  virtual RC drop(const char * file_name) = 0;
   virtual RC insert_entry(const char *record, const RID *rid) = 0;
   virtual RC delete_entry(const char *record, const RID *rid) = 0;
 

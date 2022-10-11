@@ -22,7 +22,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/tuple_cell.h"
 #include "sql/expr/expression.h"
 #include "storage/common/record.h"
-
+// #include "rc.h"
 class Table;
 
 class TupleCellSpec
@@ -40,22 +40,27 @@ public:
     }
   }
 
-  void set_alias(const char *alias)
+  void set_alias(const char *table_alias , const char *field_alias)
   {
-    this->alias_ = alias;
+    this->table_alias_ = table_alias;
+    this->field_alias_ = field_alias;
   }
-  const char *alias() const
+  const char *table_alias() const
   {
-    return alias_;
+    return table_alias_;
   }
-
+  const char *field_alias() const
+  {
+    return field_alias_;
+  }
   Expression *expression() const
   {
     return expression_;
   }
 
 private:
-  const char *alias_ = nullptr;
+  const char *table_alias_ = nullptr;
+  const char *field_alias_ = nullptr;
   Expression *expression_ = nullptr;
 };
 
@@ -156,6 +161,10 @@ public:
   {
     return *record_;
   }
+  std::vector<TupleCellSpec *> speces()
+  {
+    return speces_;
+  } 
 private:
   Record *record_ = nullptr;
   const Table *table_ = nullptr;
@@ -229,3 +238,101 @@ private:
   std::vector<TupleCellSpec *> speces_;
   Tuple *tuple_ = nullptr;
 };
+
+class JoinTuple : public Tuple
+{
+public:
+  JoinTuple() = default;
+  //JoinTuple()//拷贝函数;
+  virtual ~JoinTuple()
+  {}
+
+  void push_tuple(RowTuple *tuple)
+  {
+    tuples_.push_back(tuple);
+    add_cell_speces(tuple->speces());
+  }
+
+  void add_tuples(std::vector<Tuple *> tuples)
+  {
+    for (Tuple *tuple_ :tuples)
+    {
+      RowTuple *tuple = static_cast<RowTuple *>(tuple_);
+      push_tuple(tuple);
+    }
+  }
+
+  std::vector<Tuple *> tuples()
+  {
+    return tuples_;
+  }
+  void add_cell_speces(std::vector<TupleCellSpec *> speces)
+  {
+    //合并vector
+    speces_.insert(speces_.end() , speces.begin() , speces.end());
+    for (TupleCellSpec *spec : speces_)
+    {
+      FieldExpr* field =static_cast<FieldExpr *>(spec->expression());
+      //std::cout<<field->table_name()<<"."<<field->field_name()<<std::endl;
+    }
+  }
+
+  int cell_num() const override
+  {
+    return speces_.size();
+  }
+
+  int tuple_num() 
+  {
+    return tuples_.size();
+  }
+
+  RC cell_at(int index, TupleCell &cell) const override
+  {
+    if (index < 0 || index >= speces_.size()) {
+      return RC::GENERIC_ERROR;
+    }
+    const TupleCellSpec *spec = speces_[index];
+    RC rc = RC::SUCCESS;
+    for (Tuple *tuple_ : tuples_)
+    {
+      rc = spec->expression()->get_value(*tuple_, cell);
+      if (RC::SUCCESS ==rc)
+      {
+        return rc;
+      }
+    }
+    LOG_ERROR("There is no such cell in those tuples %s:%s",spec->table_alias(),spec->field_alias());
+    return RC::NOTFOUND;
+  }
+
+  RC find_cell(const Field &field, TupleCell &cell) const override
+  {
+    RC rc = RC::SUCCESS;
+    for (Tuple *tuple_ : tuples_)
+    {
+      rc = tuple_->find_cell(field , cell);
+      if (RC::SUCCESS ==rc)
+      {
+        return rc;
+      }
+    }
+    return RC::NOTFOUND;
+  }
+  RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
+  {
+    if (index < 0 || index >= speces_.size()) {
+      return RC::NOTFOUND;
+    }
+    spec = speces_[index];
+    return RC::SUCCESS;
+  }
+  std::vector<TupleCellSpec *> speces()
+  {
+    return speces_;
+  } 
+private:
+  std::vector<TupleCellSpec *> speces_;
+  std::vector<Tuple *> tuples_;
+};
+

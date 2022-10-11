@@ -83,6 +83,7 @@ ParserContext *get_context(yyscan_t scanner)
         INT_T
         STRING_T
         FLOAT_T
+		DATE_T
         HELP
         EXIT
         DOT //QUOTE
@@ -109,11 +110,13 @@ ParserContext *get_context(yyscan_t scanner)
   struct _Value *value1;
   char *string;
   int number;
+  char *date;
   float floats;
-	char *position;
+  char *position;
 }
 
 %token <number> NUMBER
+%token <date> DATE
 %token <floats> FLOAT 
 %token <string> ID
 %token <string> PATH
@@ -238,7 +241,7 @@ attr_def_list:
     ;
     
 attr_def:
-    ID_get type LBRACE number RBRACE 
+    ID_get type LBRACE number RBRACE //变长数据
 		{
 			AttrInfo attribute;
 			attr_info_init(&attribute, CONTEXT->id, $2, $4);
@@ -268,6 +271,7 @@ type:
 	INT_T { $$=INTS; }
        | STRING_T { $$=CHARS; }
        | FLOAT_T { $$=FLOATS; }
+	   | DATE_T {$$=DATES;}
        ;
 ID_get:
 	ID 
@@ -309,9 +313,18 @@ value:
   		value_init_float(&CONTEXT->values[CONTEXT->value_length++], $1);
 		}
     |SSS {
-			$1 = substr($1,1,strlen($1)-2);
+		$1 = substr($1,1,strlen($1)-2);
   		value_init_string(&CONTEXT->values[CONTEXT->value_length++], $1);
 		}
+	|DATE{
+		$1 = substr($1,1,strlen($1)-2);
+		int flag =value_init_date(&CONTEXT->values[CONTEXT->value_length++], $1);
+		if(flag ==0){
+			yyerror (scanner, YY_("INVALID DATE"));
+			return 0;
+		}
+			
+	}
     ;
     
 delete:		/*  delete 语句的语法解析树*/

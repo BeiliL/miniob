@@ -26,8 +26,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "common/version.h"
 namespace common {
-
-#ifndef gettid
+#define gettid() ((long long)pthread_self())
+#ifndef gettid()
 #if defined(__MACH__)
 #define gettid() ((long long)pthread_self())
 #elif defined(LINUX)

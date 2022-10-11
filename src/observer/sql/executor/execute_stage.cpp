@@ -33,6 +33,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/delete_operator.h"
 #include "sql/operator/project_operator.h"
 #include "sql/operator/update_operator.h"
+#include "sql/operator/join_operator.h"
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/update_stmt.h"
@@ -215,7 +216,7 @@ void end_trx_if_need(Session *session, Trx *trx, bool all_right)
   }
 }
 
-void print_tuple_header(std::ostream &os, const ProjectOperator &oper)
+void print_tuple_header(std::ostream &os, const ProjectOperator &oper , int isTables)
 {
   const int cell_num = oper.tuple_cell_num();
   const TupleCellSpec *cell_spec = nullptr;
@@ -224,10 +225,14 @@ void print_tuple_header(std::ostream &os, const ProjectOperator &oper)
     if (i != 0) {
       os << " | ";
     }
-
-    if (cell_spec->alias()) {
-      os << cell_spec->alias();
+    if (isTables)
+    {
+      os<<cell_spec->table_alias()<<".";
     }
+    
+    if (cell_spec->field_alias()) {
+      os << cell_spec->field_alias();
+    }   
   }
 
   if (cell_num > 0) {
@@ -384,55 +389,118 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   SessionEvent *session_event = sql_event->session_event();
   RC rc = RC::SUCCESS;
   if (select_stmt->tables().size() != 1) {
-    LOG_WARN("select more than 1 tables is not supported");
-    rc = RC::UNIMPLENMENT;
-    return rc;
-  }
+    LOG_INFO("begin to select tables");
+    //暂时放弃索引式？
 
-  Operator *scan_oper = try_to_create_index_scan_operator(select_stmt->filter_stmt());
-  if (nullptr == scan_oper) {
-    scan_oper = new TableScanOperator(select_stmt->tables()[0]);
-  }
-
-  DEFER([&] () {delete scan_oper;});
-
-  PredicateOperator pred_oper(select_stmt->filter_stmt());
-  pred_oper.add_child(scan_oper);
-  ProjectOperator project_oper;
-  project_oper.add_child(&pred_oper);
-  for (const Field &field : select_stmt->query_fields()) {
-    project_oper.add_projection(field.table(), field.meta());
-  }
-  rc = project_oper.open();
-  if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to open operator");
-    return rc;
-  }
-
-  std::stringstream ss;
-  print_tuple_header(ss, project_oper);
-  while ((rc = project_oper.next()) == RC::SUCCESS) {
-    // get current record
-    // write to response
-    Tuple * tuple = project_oper.current_tuple();
-    if (nullptr == tuple) {
-      rc = RC::INTERNAL;
-      LOG_WARN("failed to get current record. rc=%s", strrc(rc));
-      break;
+    std::vector<TableScanOperator*> scan_oper ;
+    std::vector<JoinOperator *> join_oper;
+    //释放指针
+    int table_num = select_stmt->tables().size();
+    for (int i = 0; i <=table_num-1; i++)
+    {
+      scan_oper.push_back(new TableScanOperator(select_stmt->tables()[i])) ;
     }
 
-    tuple_to_string(ss, *tuple);
-    ss << std::endl;
-  }
+    //单表自己的条件过滤？
+    
+    join_oper.push_back(new JoinOperator(scan_oper[table_num-2], scan_oper[table_num-1], true));
 
-  if (rc != RC::RECORD_EOF) {
-    LOG_WARN("something wrong while iterate operator. rc=%s", strrc(rc));
-    project_oper.close();
-  } else {
-    rc = project_oper.close();
+    for (int i = 0; i < table_num-2 ; i++)
+    {
+        join_oper.push_back(new JoinOperator(scan_oper[table_num-i-3] , join_oper[i], false));
+    }
+    PredicateOperator pred_oper(select_stmt->filter_stmt());
+    pred_oper.add_child(join_oper[table_num-2]);
+    ProjectOperator project_oper;
+    project_oper.add_child(&pred_oper);
+    for (const Field &field : select_stmt->query_fields()) {
+      project_oper.add_projection(field.table(), field.meta());
+    }
+    rc = project_oper.open();
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to open operator");
+      return rc;
+    }
+
+    std::stringstream ss;
+    print_tuple_header(ss, project_oper , 1);
+    while ((rc = project_oper.next()) == RC::SUCCESS) {
+      // get current record
+      // write to response
+      Tuple * tuple = project_oper.current_tuple();
+      if (nullptr == tuple) {
+        rc = RC::INTERNAL;
+        LOG_WARN("failed to get current record. rc=%s", strrc(rc));
+        break;
+      }
+
+      tuple_to_string(ss, *tuple);
+      ss << std::endl;
+    }
+
+    if (rc != RC::RECORD_EOF) {
+      LOG_WARN("something wrong while iterate operator. rc=%s", strrc(rc));
+      project_oper.close();
+    } else {
+      rc = project_oper.close();
+    }
+    for (int i = 0; i <=table_num-1; i++)
+    {
+       delete scan_oper[i];
+    }
+    for (int i = 0; i < table_num-2; i++)
+    {
+      delete join_oper[i];
+    }
+    session_event->set_response(ss.str());
+    return rc;
   }
-  session_event->set_response(ss.str());
-  return rc;
+  else{
+    Operator *scan_oper = try_to_create_index_scan_operator(select_stmt->filter_stmt());
+    if (nullptr == scan_oper) {
+      scan_oper = new TableScanOperator(select_stmt->tables()[0]);
+    }
+
+    DEFER([&] () {delete scan_oper;});
+
+    PredicateOperator pred_oper(select_stmt->filter_stmt());
+    pred_oper.add_child(scan_oper);
+    ProjectOperator project_oper;
+    project_oper.add_child(&pred_oper);
+    for (const Field &field : select_stmt->query_fields()) {
+      project_oper.add_projection(field.table(), field.meta());
+    }
+    rc = project_oper.open();
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to open operator");
+      return rc;
+    }
+
+    std::stringstream ss;
+    print_tuple_header(ss, project_oper ,0);
+      while ((rc = project_oper.next()) == RC::SUCCESS) {
+        // get current record
+        // write to response
+        Tuple * tuple = project_oper.current_tuple();
+        if (nullptr == tuple) {
+          rc = RC::INTERNAL;
+          LOG_WARN("failed to get current record. rc=%s", strrc(rc));
+          break;
+        }
+
+      tuple_to_string(ss, *tuple);
+      ss << std::endl;
+    }
+
+    if (rc != RC::RECORD_EOF) {
+      LOG_WARN("something wrong while iterate operator. rc=%s", strrc(rc));
+      project_oper.close();
+    } else {
+      rc = project_oper.close();
+    }
+    session_event->set_response(ss.str());
+    return rc;
+  }
 }
 
 RC ExecuteStage::do_help(SQLStageEvent *sql_event)

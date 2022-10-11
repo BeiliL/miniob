@@ -57,6 +57,9 @@ public:
     case CHARS: {
       return strncmp(v1, v2, attr_length_);
     }
+    case DATES:{
+      return *(int *)v1 - *(int *)v2;
+    }
     default:{
       LOG_ERROR("unknown attr type. %d", attr_type_);
       abort();
@@ -120,11 +123,20 @@ public:
     case CHARS: {
       std::string str;
       for (int i = 0; i < attr_length_; i++) {
-	if (v[i] == 0) {
-	  break;
-	}
-	str.push_back(v[i]);
+        if (v[i] == 0) {
+          break;
+        }
+	      str.push_back(v[i]);
       }
+      return str;
+    }
+    case DATES:{
+      int date = *(int *)v;
+      int year = date / 10000;
+      int month = (date - year *10000) / 100;
+      int day = date % 100;
+      std::string str;
+      str = std::to_string(year) + '-' + std::to_string(month) +'-' +std::to_string(day);
       return str;
     }
     default:{

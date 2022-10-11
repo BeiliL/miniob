@@ -852,7 +852,7 @@ RC BplusTreeHandler::open(const char *file_name)
   memcpy(&file_header_, pdata, sizeof(IndexFileHeader));
   header_dirty_ = false;
   disk_buffer_pool_ = disk_buffer_pool;
-
+  file_header_.to_string();
   mem_pool_item_ = new common::MemPoolItem(file_name);
   if (mem_pool_item_->init(file_header_.key_length) < 0) {
     LOG_WARN("Failed to init memory pool for index %s", file_name);

@@ -57,6 +57,41 @@ void value_init_string(Value *value, const char *v)
   value->type = CHARS;
   value->data = strdup(v);
 }
+int check_date(int year , int month , int day){
+  int flag =0;
+  //年份test
+  if (year< 0)
+  {
+    return 0;
+  }
+  //闰年判断
+  if (((year % 4 ==0) && (year %100 !=0))|| year %400 ==0)
+  {
+    flag = 1;
+  }
+  //月份test
+  int days[13]={0,31,29,30,31,30,31,31,31,30,31,30,31};
+  if (month<1 ||month >12)
+    return 0;
+  //日期test(年和月来决定)
+  if(flag ==0)
+    days[2]--;
+  if (day <1 || day>days[month])
+    return 0;
+  return 1;  
+}
+int value_init_date(Value *value, const char *v)
+{
+  value->type = DATES;
+  int year=0, month=0 , day=0;
+  sscanf(v,"%d-%d-%d", &year , &month , &day);
+  int  a = check_date(year , month , day);
+  if(a!=1) return 0;
+  int date = year * 10000 + month * 100 + day;
+  value->data = malloc(sizeof(date));
+  memcpy(value->data, &date , sizeof(date));
+  return 1;
+}
 void value_destroy(Value *value)
 {
   value->type = UNDEFINED;
@@ -401,6 +436,5 @@ RC parse(const char *st, Query *sqln)
 
   if (sqln->flag == SCF_ERROR)
     return SQL_SYNTAX;
-  else
-    return SUCCESS;
+  return SUCCESS;
 }
